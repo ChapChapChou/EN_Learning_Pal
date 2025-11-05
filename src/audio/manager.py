@@ -12,6 +12,10 @@ import threading
 class AudioManager:
     """Manages audio input/output streams"""
     
+    # Audio format constants
+    AUDIO_FORMAT = pyaudio.paInt16  # 16-bit audio
+    BYTES_PER_SAMPLE = 2  # 16-bit = 2 bytes per sample
+    
     def __init__(self, sample_rate: int = 16000, chunk_size: int = 1024):
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -36,7 +40,7 @@ class AudioManager:
             return (None, pyaudio.paContinue)
         
         self.input_stream = self.audio.open(
-            format=pyaudio.paInt16,
+            format=self.AUDIO_FORMAT,
             channels=1,
             rate=self.sample_rate,
             input=True,
@@ -64,10 +68,11 @@ class AudioManager:
                 data = self.output_queue.get()
                 return (data, pyaudio.paContinue)
             else:
-                return (b'\x00' * frame_count * 2, pyaudio.paContinue)
+                # Return silence: frame_count frames * BYTES_PER_SAMPLE
+                return (b'\x00' * frame_count * self.BYTES_PER_SAMPLE, pyaudio.paContinue)
         
         self.output_stream = self.audio.open(
-            format=pyaudio.paInt16,
+            format=self.AUDIO_FORMAT,
             channels=1,
             rate=self.sample_rate,
             output=True,

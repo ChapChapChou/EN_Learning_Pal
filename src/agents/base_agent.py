@@ -117,6 +117,8 @@ class GeminiLiveAgent(BaseVoiceAgent):
     async def _generate_response(self, audio_data: bytes) -> Dict[str, Any]:
         """Generate response using Gemini Live API"""
         # For Gemini Live, we send audio directly
+        # Note: Using audio/pcm as MIME type for raw PCM data
+        # Gemini API may also accept audio/wav or audio/x-wav
         response = await asyncio.to_thread(
             self.chat_session.send_message,
             {

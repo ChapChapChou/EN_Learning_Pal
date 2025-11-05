@@ -181,9 +181,12 @@ Give a brief, enthusiastic introduction (2-3 sentences) and introduce your exper
     def _play_audio_sync(self, audio_data: bytes):
         """Play audio synchronously"""
         self.audio_manager.play_audio(audio_data)
-        # Simple wait - in production would track playback completion
-        import time
-        time.sleep(len(audio_data) / (self.system_config.sample_rate * 2))
+        # Calculate playback duration based on audio format (16-bit = 2 bytes per sample)
+        bytes_per_sample = 2  # 16-bit audio = 2 bytes
+        duration_seconds = len(audio_data) / (self.system_config.sample_rate * bytes_per_sample)
+        # Use asyncio.sleep to avoid blocking the event loop
+        import asyncio
+        asyncio.create_task(asyncio.sleep(duration_seconds))
     
     async def stop(self):
         """Stop the podcast mode"""
