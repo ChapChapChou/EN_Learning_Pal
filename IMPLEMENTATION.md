@@ -47,7 +47,7 @@
 **Core Components:**
 1. **Base Agent (`src/agents/base_agent.py`)**
    - Abstract base class for all agents
-   - Gemini Live API integration
+   - Google ADK (google-genai) LiveSession integration
    - Latency tracking
    - Conversation history management
    - Interruption handling
@@ -174,8 +174,7 @@ All examples include error handling and graceful degradation.
 ### 🔧 Dependencies
 
 **Core:**
-- google-genai >= 0.2.0
-- google-generativeai >= 0.8.0
+- google-genai >= 0.2.2 (Google ADK - Official AI Python SDK)
 - python-dotenv >= 1.0.0
 
 **Audio:**
@@ -184,7 +183,6 @@ All examples include error handling and graceful degradation.
 
 **Async:**
 - aiohttp >= 3.9.4 (security patched)
-- asyncio >= 3.4.3
 
 ### 📝 Usage Examples
 

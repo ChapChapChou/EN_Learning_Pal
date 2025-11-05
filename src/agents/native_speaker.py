@@ -121,6 +121,10 @@ class NativeSpeakerMode:
         self.is_running = False
         self.audio_manager.cleanup()
         
+        # Close the agent session
+        if hasattr(self.agent, 'close'):
+            await self.agent.close()
+        
         # Show final stats
         avg_latency = self.agent.get_average_latency()
         if avg_latency > 0:

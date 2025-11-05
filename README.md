@@ -18,7 +18,7 @@ Real-time voice agent system for English learning using Google ADK & Gemini Live
 
 ## Technology Stack
 
-- **Google ADK (Python)**: Application Development Kit for AI agents
+- **Google ADK (google-genai)**: Official Google AI Python SDK with LiveSession API for real-time interactions
 - **Gemini Live API**: Real-time multimodal AI with audio support
 - **PyAudio**: Real-time audio input/output
 - **Async/Await**: Non-blocking I/O for optimal performance

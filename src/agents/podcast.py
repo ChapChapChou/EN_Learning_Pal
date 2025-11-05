@@ -193,6 +193,12 @@ Give a brief, enthusiastic introduction (2-3 sentences) and introduce your exper
         self.is_running = False
         self.audio_manager.cleanup()
         
+        # Close agent sessions
+        if hasattr(self.host, 'close'):
+            await self.host.close()
+        if hasattr(self.expert, 'close'):
+            await self.expert.close()
+        
         # Show final stats
         print(f"\n{'='*60}")
         print(f"\n📊 PODCAST SESSION STATS:")

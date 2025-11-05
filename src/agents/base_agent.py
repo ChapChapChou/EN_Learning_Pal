@@ -1,49 +1,32 @@
 """
-Base voice agent implementation using Gemini Live API
+Base voice agent implementation using Google ADK (google-genai)
 """
 import asyncio
 import time
 from typing import Optional, Callable, List, Dict, Any
 from abc import ABC, abstractmethod
-import google.generativeai as genai
+from google import genai
 from ..config import AgentConfig, SystemConfig
 
 
 class BaseVoiceAgent(ABC):
-    """Base class for voice agents using Gemini Live API"""
+    """Base class for voice agents using Google ADK"""
     
     def __init__(self, config: AgentConfig, system_config: SystemConfig):
         self.config = config
         self.system_config = system_config
-        self.model = None
+        self.client = None
+        self.model_id = None
         self.conversation_history: List[Dict[str, str]] = []
         self.is_speaking = False
         self.is_listening = True
         self.latency_tracker = []
         
     async def initialize(self):
-        """Initialize the agent with Gemini API"""
-        genai.configure(api_key=self.system_config.api_key)
-        
-        # Configure model for live conversation
-        generation_config = {
-            "temperature": self.config.temperature,
-            "max_output_tokens": self.config.max_tokens,
-            "response_modalities": ["AUDIO", "TEXT"],
-            "speech_config": {
-                "voice_config": {
-                    "prebuilt_voice_config": {
-                        "voice_name": self.config.voice.voice_name
-                    }
-                }
-            }
-        }
-        
-        self.model = genai.GenerativeModel(
-            model_name=self.system_config.model_name,
-            generation_config=generation_config,
-            system_instruction=self.config.system_prompt
-        )
+        """Initialize the agent with Google ADK"""
+        # Initialize Google ADK client
+        self.client = genai.Client(api_key=self.system_config.api_key)
+        self.model_id = self.system_config.model_name
         
     async def process_audio_input(self, audio_data: bytes) -> Optional[Dict[str, Any]]:
         """Process audio input and generate response"""
@@ -103,58 +86,96 @@ class BaseVoiceAgent(ABC):
 
 
 class GeminiLiveAgent(BaseVoiceAgent):
-    """Gemini Live API agent implementation"""
+    """Google ADK Live API agent implementation"""
     
     def __init__(self, config: AgentConfig, system_config: SystemConfig):
         super().__init__(config, system_config)
-        self.chat_session = None
+        self.session = None
         
     async def initialize(self):
-        """Initialize with chat session"""
+        """Initialize with live session"""
         await super().initialize()
-        self.chat_session = self.model.start_chat(history=[])
         
-    async def _generate_response(self, audio_data: bytes) -> Dict[str, Any]:
-        """Generate response using Gemini Live API"""
-        # For Gemini Live, we send audio directly
-        # Note: Using audio/pcm as MIME type for raw PCM data
-        # Gemini API may also accept audio/wav or audio/x-wav
-        response = await asyncio.to_thread(
-            self.chat_session.send_message,
-            {
-                "mime_type": "audio/pcm",
-                "data": audio_data
-            }
+        # Create live session configuration
+        config = {
+            "generation_config": {
+                "temperature": self.config.temperature,
+                "max_output_tokens": self.config.max_tokens,
+                "response_modalities": ["AUDIO", "TEXT"],
+            },
+            "speech_config": {
+                "voice_config": {
+                    "prebuilt_voice_config": {
+                        "voice_name": self.config.voice.voice_name
+                    }
+                }
+            },
+            "system_instruction": self.config.system_prompt
+        }
+        
+        # Initialize live session using Google ADK
+        self.session = self.client.aio.live.connect(
+            model=self.model_id,
+            config=config
         )
         
+    async def _generate_response(self, audio_data: bytes) -> Dict[str, Any]:
+        """Generate response using Google ADK Live API"""
+        if not self.session:
+            raise RuntimeError("Session not initialized")
+        
         result = {
-            "text": response.text if hasattr(response, 'text') else "",
+            "text": "",
             "audio": None,
             "agent": self.config.name
         }
         
-        # Extract audio if available
-        if hasattr(response, 'candidates') and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                for part in candidate.content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data.mime_type.startswith('audio'):
-                        result["audio"] = part.inline_data.data
+        try:
+            # Send audio to live session
+            await self.session.send(audio_data, mime_type="audio/pcm")
+            
+            # Receive response from live session
+            async for response in self.session.receive():
+                # Extract text if available
+                if hasattr(response, 'text') and response.text:
+                    result["text"] += response.text
+                
+                # Extract audio if available
+                if hasattr(response, 'data') and response.data:
+                    if result["audio"] is None:
+                        result["audio"] = response.data
+                    else:
+                        result["audio"] += response.data
+                
+                # Break after first complete response
+                if hasattr(response, 'server_content') and response.server_content:
+                    break
+            
+            # Add to history
+            if result["text"]:
+                self.add_to_history("assistant", result["text"])
         
-        # Add to history
-        if result["text"]:
-            self.add_to_history("assistant", result["text"])
+        except Exception as e:
+            print(f"❌ Error in live session: {e}")
+            result["text"] = ""
         
         return result
     
     async def process_text_input(self, text: str) -> Dict[str, Any]:
-        """Process text input (for testing or fallback)"""
+        """Process text input using Google ADK"""
         start_time = time.time()
         
         try:
+            # Use standard generate_content for text-only interaction
             response = await asyncio.to_thread(
-                self.chat_session.send_message,
-                text
+                self.client.models.generate_content,
+                model=self.model_id,
+                contents=text,
+                config={
+                    "temperature": self.config.temperature,
+                    "max_output_tokens": self.config.max_tokens,
+                    "system_instruction": self.config.system_prompt
+                }
             )
             
             latency = (time.time() - start_time) * 1000
@@ -166,14 +187,6 @@ class GeminiLiveAgent(BaseVoiceAgent):
                 "agent": self.config.name
             }
             
-            # Extract audio if available
-            if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data.mime_type.startswith('audio'):
-                            result["audio"] = part.inline_data.data
-            
             if result["text"]:
                 self.add_to_history("user", text)
                 self.add_to_history("assistant", result["text"])
@@ -183,3 +196,12 @@ class GeminiLiveAgent(BaseVoiceAgent):
         except Exception as e:
             print(f"❌ Error processing text: {e}")
             return {"text": "", "audio": None, "agent": self.config.name}
+    
+    async def close(self):
+        """Close the live session"""
+        if self.session:
+            try:
+                await self.session.close()
+            except Exception as e:
+                print(f"⚠️  Error closing session: {e}")
+            self.session = None
